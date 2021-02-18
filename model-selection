@@ -1,0 +1,40 @@
+#!/bin/bash
+
+VALIDATION_RESULT=0
+BEST=0
+VAL_KEY=val_acc
+# Uncomment the following lines for regression tasks (i.e, esol)
+# BEST=10000
+# VAL_KEY=val_error
+
+mkdir runs/$1 2> /dev/null
+touch runs/$1/best
+
+for LR in 0.005 0.001 0.0005 0.0001
+do
+    for BS in 20 60 120
+    do
+        for HS in 32 64 128 256
+        do
+            SEED=$RANDOM
+            EXPERIMENT="ADAM_LR_${LR}_BS_${BS}_HS_${HS}"
+            echo "lr: ${LR} hidden_size: ${HS} batch_size: ${BS} seed: ${SEED}"
+            python train_dgn.py $1 $EXPERIMENT --lr $LR --hidden-size $HS --batch-size $BS --dropout 0.1 --epochs 100 --seed $SEED
+
+
+            VALIDATION_RESULT=`cat runs/$1/$EXPERIMENT/best_result.json | python3 -c "import sys, json; print(json.load(sys.stdin)['$VAL_KEY'])"`
+
+            echo $VALIDATION_RESULT
+            # Uncomment the following line for regression tasks
+            # if echo $VALIDATION_RESULT $BEST | awk '{exit !( $1 < $2)}'; then
+            if echo $VALIDATION_RESULT $BEST | awk '{exit !( $1 > $2)}'; then
+
+                echo "NEW BEST"
+                BEST=$VALIDATION_RESULT
+                echo $EXPERIMENT > runs/$1/best
+            fi
+
+            echo "--------------------DONE------------------------"
+        done
+    done
+done
