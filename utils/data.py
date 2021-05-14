@@ -34,7 +34,7 @@ def get_split(dataset_name, split, experiment):
 
     elif dataset_name.lower() == 'cycliq':
         ds = CYCLIQ(
-            'data/cycliq-evo',
+            'data/cycliq',
             name=dataset_name.upper()
         )
 

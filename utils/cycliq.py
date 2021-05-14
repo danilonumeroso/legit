@@ -1,19 +1,43 @@
-import os
+# import os
 import os.path as osp
-import glob
+# import glob
 
 import torch
 from torch_geometric.data import InMemoryDataset, Data
-from torch_geometric.io.tu import split, read_file, cat, coalesce
+from torch_geometric.io.tu import split, read_file, coalesce
 from torch_geometric.utils import remove_self_loops
+from utils.gen_dataset import cycliq, write_gexf, write_adjacency
+from pathlib import Path
+
 
 class CYCLIQ(InMemoryDataset):
 
-    def __init__(self, root, name, transform=None, pre_transform=None,
+    def __init__(self,
+                 root,
+                 name,
+                 sample_size=1000,
+                 graphs_distribution=[{
+                     'dims': (8, 15),
+                     'count': (1, 2),
+                     'len_structure': 5
+                 }, {
+                     'dims': (8, 15),
+                     'count': (1, 2),
+                     'len_structure': 5
+                 }],
+                 transform=None,
+                 pre_transform=None,
                  pre_filter=None):
         self.name = name
-        super(CYCLIQ, self).__init__(root, transform, pre_transform,
+        self.sample_size = sample_size
+        self.graph_distrib = graphs_distribution
+        self.root = root
+
+        super(CYCLIQ, self).__init__(root,
+                                     transform,
+                                     pre_transform,
                                      pre_filter)
+
         self.data, self.slices = torch.load(self.processed_paths[0])
 
     @property
@@ -27,6 +51,11 @@ class CYCLIQ(InMemoryDataset):
         return osp.join(self.root, self.name, name)
 
     @property
+    def gexf_dir(self):
+        name = 'gexf'
+        return osp.join(self.root, self.name, name)
+
+    @property
     def raw_file_names(self):
         names = ['A', 'graph_indicator']
         return ['{}_{}.txt'.format(self.name, name) for name in names]
@@ -36,6 +65,13 @@ class CYCLIQ(InMemoryDataset):
         return 'data.pt'
 
     def download(self):
+        gexf_dir = Path(self.gexf_dir)
+        gexf_dir.mkdir()
+
+        graphs = cycliq(self.sample_size, self.graph_distrib)
+        write_gexf(gexf_dir, graphs)
+        write_adjacency(Path(self.raw_dir), self.name, graphs)
+
         pass
 
     def process(self):
@@ -56,9 +92,10 @@ class CYCLIQ(InMemoryDataset):
     def __repr__(self):
         return '{}({})'.format(self.name, len(self))
 
+
 def read_cycliq_data(folder, prefix):
-    files = glob.glob(osp.join(folder, '{}_*.txt'.format(prefix)))
-    names = [f.split(os.sep)[-1][len(prefix) + 1:-4] for f in files]
+    # files = glob.glob(osp.join(folder, '{}_*.txt'.format(prefix)))
+    # names = [f.split(os.sep)[-1][len(prefix) + 1:-4] for f in files]
 
     edge_index = read_file(folder, prefix, 'A', torch.long).t() - 1
     batch = read_file(folder, prefix, 'graph_indicator', torch.long) - 1
