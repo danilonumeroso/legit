@@ -10,7 +10,8 @@ import typer
 
 from models.explainer import CF_Tox21, NCF_Tox21, Agent, CF_Esol, NCF_Esol, CF_Cycliq, NCF_Cycliq
 from torch.utils.tensorboard import SummaryWriter
-from utils import SortedQueue, morgan_bit_fingerprint, get_split, get_dgn, mol_to_smiles, x_map_tox21, pyg_to_mol_tox21, mol_from_smiles, mol_to_tox21_pyg
+from utils import SortedQueue, morgan_bit_fingerprint, get_split, get_dgn, set_seed, \
+    mol_to_smiles, x_map_tox21, pyg_to_mol_tox21, mol_from_smiles, mol_to_tox21_pyg
 from torch.nn import functional as F
 from torch_geometric.utils import to_networkx
 
@@ -65,7 +66,7 @@ def tox21(general_params,
     def action_encoder(action):
         return morgan_bit_fingerprint(action, args['fp_length'], args['fp_radius']).numpy()
 
-    meg_train(writer,
+    gen_train(writer,
               action_encoder,
               args['fp_length'],
               cf_env,
@@ -74,7 +75,7 @@ def tox21(general_params,
               tb_name="tox21",
               id_function=lambda action: action,
               args=args)
-    meg_train(writer,
+    gen_train(writer,
               action_encoder,
               args['fp_length'],
               ncf_env,
@@ -149,7 +150,7 @@ def cycliq(general_params,
     def action_encoder(action):
         return model_to_explain(action.x, action.edge_index)[1][1].numpy()
     try:
-        meg_train(writer,
+        gen_train(writer,
                   action_encoder,
                   model_to_explain.num_hidden * 2,
                   cf_env,
@@ -159,10 +160,10 @@ def cycliq(general_params,
                   id_function=lambda action: hash(map(tuple, action.edge_index)),
                   args=args)
     except KeyboardInterrupt:
-        print("MEG Cycle interrupted.")
+        print("Cycle interrupted.")
 
     try:
-        meg_train(writer,
+        gen_train(writer,
                   action_encoder,
                   model_to_explain.num_hidden * 2,
                   ncf_env,
@@ -172,9 +173,9 @@ def cycliq(general_params,
                   id_function=lambda action: hash(map(tuple, action.edge_index)),
                   args=args)
     except KeyboardInterrupt:
-        print("MEG Cycle interrupted.")
+        print("Cycle interrupted.")
 
-    print("MEG Save")
+    print("Save")
     overall_queue = []
     overall_queue.append({
         'pyg': original_graph,
@@ -232,7 +233,7 @@ def esol(general_params,
     def action_encoder(action):
         return morgan_bit_fingerprint(action, args['fp_length'], args['fp_radius']).numpy()
 
-    meg_train(writer,
+    gen_train(writer,
               action_encoder,
               args['fp_length'],
               cf_env,
@@ -241,7 +242,7 @@ def esol(general_params,
               tb_name="esol",
               id_function=lambda action: action,
               args=args)
-    meg_train(writer,
+    gen_train(writer,
               action_encoder,
               args['fp_length'],
               ncf_env, ncf_queue,
@@ -267,7 +268,7 @@ def esol(general_params,
 
     save_results(base_path, overall_queue, args)
 
-def meg_train(writer,
+def gen_train(writer,
               action_encoder,
               n_input,
               environment,
@@ -358,7 +359,7 @@ def meg_train(writer,
 
 
 def save_results(base_path, queue, args, quantitative=False):
-    output_dir = base_path + f"/meg_output/{args['sample']}"
+    output_dir = base_path + f"/gen_output/{args['sample']}"
     embedding_dir = output_dir + "/embeddings"
     gexf_dir = output_dir + "/gexf_data"
 
@@ -418,17 +419,17 @@ def main(dataset: str,
 
     dataset = dataset.lower()
     if dataset == 'tox21':
-        meg = tox21
+        gen = tox21
     elif dataset == 'esol':
-        meg = esol
+        gen = esol
     elif dataset == 'cycliq':
-        meg = cycliq
+        gen = cycliq
 
-    torch.manual_seed(seed)
+    set_seed(seed)
 
     base_path = f'./runs/{dataset.lower()}/{experiment_name}'
 
-    meg(general_params,
+    gen(general_params,
         base_path,
         SummaryWriter(f'{base_path}/plots'),
         num_counterfactuals,

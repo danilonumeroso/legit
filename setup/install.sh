@@ -2,10 +2,11 @@
 CUDA_VERSION=${1:-cpu} # cpu | cu92 | cu101 | cu102
 TORCH_VERSION=1.6.0
 TORCH_GEOMETRIC_VERSION=1.6.0
+NAME=legit
 
-conda remove --name meg --all -y
-conda create --name meg python=3.7 -y
-conda activate meg
+conda remove --name ${NAME} --all -y
+conda create --name ${NAME} python=3.7 -y
+conda activate ${NAME}
 
 conda install pip -y
 conda install rdkit -c rdkit -y

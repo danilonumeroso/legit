@@ -7,9 +7,18 @@ from torch_geometric.utils import precision, recall
 from torch_geometric.utils import f1_score, accuracy
 from torch.utils.tensorboard import SummaryWriter
 
+
+def set_seed(seed):
+    import random
+    import numpy as np
+
+    torch.manual_seed(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+
+
 def train_epoch_classifier(model, train_loader, len_train, optimizer, device):
     model.train()
-
     loss_all = 0
     for data in train_loader:
         data = data.to(device)
@@ -21,6 +30,7 @@ def train_epoch_classifier(model, train_loader, len_train, optimizer, device):
         optimizer.step()
 
     return loss_all / len_train
+
 
 def test_classifier(model, loader, device):
     model.eval()
@@ -47,6 +57,7 @@ def test_classifier(model, loader, device):
         f1_score(y, yp, model.num_output).mean().item(),
         loss_all
     )
+
 
 def train_cycle_classifier(task, train_loader, val_loader, test_loader, len_train, len_val, len_test,
                            model, optimizer, device, base_path, epochs):
@@ -130,10 +141,9 @@ def train_cycle_regressor(task, train_loader, val_loader, test_loader,
                           len_train, len_val, len_test, model,
                           optimizer, device, base_path, epochs):
 
-    best_acc = (0, 0)
     writer = SummaryWriter(base_path + '/plots')
-
     best_error = (+10000, +10000)
+
     for epoch in range(epochs):
         loss = train_epoch_regressor(model, train_loader, len_train, optimizer, device)
         writer.add_scalar('Loss/train', loss, epoch)

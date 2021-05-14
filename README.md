@@ -24,4 +24,50 @@ Now you can train the DGN to be explained by running:
 python train_dgn.py [tox21 | esol] <experiment_name>
 ```
 
-...
+Executing this script will populate the directory `runs`, which is structured as follows:
+
+```
+runs/
+└── <dataset_name>
+    └── <experiment_name>
+        ├── best_performance.json
+        ├── ckpt
+        │   └── <model>.pth
+        ├── hyperparams.json
+        ├── gen_output
+        │   └── <sample>
+        │       └── data.json
+        │
+        ├── plots
+        │   └── events.out.tfevents.*
+        └── splits
+            ├── test.pth
+            ├── train.pth
+            └── val.pth
+
+```
+
+## Reproducibility
+
+To reproduce results comparable to what is shown in the paper, run:
+```
+python train_dgn.py [tox21 | esol | cycliq] <experiment_name> --lr LR --hidden-size HS  --batch-size BS --dropout D --epochs 100
+
+python train_gen.py [tox21 | esol | cycliq] <experiment_name>
+```
+
+The generator will dump neighbours to `runs/<dataset_name>/<experiment_name>/gen_output/<sample>/data.json`.
+
+To generate explanation for a sample, run:
+
+```
+python explain.py contrast | GNNExplainer | linear | random <...parameters>
+```
+
+`contrast` only work for CYCLIQ, whereas `linear` requires chemistry tasks (i.e, TOX21, ESOL).
+
+To evaluate explanation accuracy for CYCLIQ, we use the evaluation script from (CoGE)[https://github.com/lukasjf/contrastive-gnn-explanation]:
+
+```
+python evaluate.py <dataset_path> <explain_path>
+```

@@ -5,7 +5,7 @@ import json
 import typer
 
 from models.encoder import GCNN
-from utils import preprocess, get_dgn, train_cycle_classifier, train_cycle_regressor
+from utils import preprocess, get_dgn, train_cycle_classifier, train_cycle_regressor, set_seed
 
 
 def main(dataset_name: str,
@@ -17,7 +17,7 @@ def main(dataset_name: str,
          epochs:int = typer.Option(50),
          seed: int = typer.Option(0)):
 
-    torch.manual_seed(seed)
+    set_seed(seed)
 
     dataset_name = dataset_name.lower()
 
@@ -26,7 +26,7 @@ def main(dataset_name: str,
         os.makedirs(base_path + "/ckpt")
         os.makedirs(base_path + "/plots")
         os.makedirs(base_path + "/splits")
-        os.makedirs(base_path + "/meg_output")
+        os.makedirs(base_path + "/gen_output")
     else:
         import shutil
         shutil.rmtree(base_path + "/plots", ignore_errors=True)
@@ -54,6 +54,8 @@ def main(dataset_name: str,
                    'num_hidden': hidden_size,
                    'num_output': num_classes,
                    'dropout': dropout,
+                   'batch_size': batch_size,
+                   'lr': lr,
                    'seed': seed}, outfile)
 
     optimizer = torch.optim.Adam(

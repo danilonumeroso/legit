@@ -15,9 +15,6 @@ from utils.cycliq import CYCLIQ
 
 def pre_transform(sample, n_pad):
     sample.x = F.pad(sample.x, (0,n_pad), "constant")
-    # mol = mol_from_smiles(mol_to_smiles(pyg_to_mol_tox21(sample)))
-    # sample = mol_to_esol_pyg(mol)
-    # sample.smiles = mol_to_smiles(sample)
     return sample
 
 def get_split(dataset_name, split, experiment):
