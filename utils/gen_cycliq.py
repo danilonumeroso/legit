@@ -52,7 +52,8 @@ def attach_cycle(g, cycle_len, label, is_clique):
 
 def attach_cycles(g, cycle_len, count, is_clique=False):
     for i in range(count):
-        attach_cycle(g, cycle_len, '%d-%d-%d' % (cycle_len, is_clique, i), is_clique)
+        attach_cycle(g, cycle_len, '%d-%d-%d' % (cycle_len, is_clique, i),
+                     is_clique)
     return g
 
 
@@ -62,6 +63,7 @@ def add_to_list(graph_list, g, label):
         g.nodes()[u]['graph_num'] = graph_num
     g.graph['graph_num'] = graph_num
     graph_list.append((g, label))
+
 
 def cycliq(sample_size, is_multi):
     all_graphs = []
@@ -101,7 +103,8 @@ def cycliq(sample_size, is_multi):
 def write_gexf(output_path: Path, graphs):
     print('Created .gexf files in %s' % output_path)
     for g, label in graphs:
-        nx.write_gexf(g, output_path / ('%d.%d.gexf' % (g.graph['graph_num'], label)))
+        nx.write_gexf(
+            g, output_path / ('%d.%d.gexf' % (g.graph['graph_num'], label)))
 
 
 def write_adjacency(output_path: Path, name: str, graphs):
@@ -109,7 +112,8 @@ def write_adjacency(output_path: Path, name: str, graphs):
     first_label = 1
     graph_indicator = []
     for g, label in tq(graphs):
-        relabled_gs.append(nx.convert_node_labels_to_integers(g, first_label=first_label))
+        relabled_gs.append(
+            nx.convert_node_labels_to_integers(g, first_label=first_label))
         N = len(g.nodes())
         first_label += N
         graph_indicator.extend([g.graph['graph_num']] * N)
@@ -127,8 +131,10 @@ def write_adjacency(output_path: Path, name: str, graphs):
 
 def main(dataset: Dataset,
          name: str = typer.Argument(None),
-         output_path: Path = typer.Argument('data', help='Output path for dataset'),
-         sample_size: int = typer.Option(1000, help='Number of samples for each label to generate')):
+         output_path: Path = typer.Argument('data',
+                                            help='Output path for dataset'),
+         sample_size: int = typer.Option(
+             1000, help='Number of samples for each label to generate')):
     print('Generating %s dataset' % dataset.value)
     if dataset == Dataset.CYCLIQ:
         graphs = cycliq(sample_size, is_multi=False)

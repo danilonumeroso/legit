@@ -50,26 +50,26 @@ def test_classifier(model, loader, device):
 
         loss_all += data.num_graphs * loss.item()
 
-    return (
-        accuracy(y, yp),
-        precision(y, yp, model.num_output).mean().item(),
-        recall(y, yp, model.num_output).mean().item(),
-        f1_score(y, yp, model.num_output).mean().item(),
-        loss_all
-    )
+    return (accuracy(y, yp), precision(y, yp, model.num_output).mean().item(),
+            recall(y, yp, model.num_output).mean().item(),
+            f1_score(y, yp, model.num_output).mean().item(), loss_all)
 
 
-def train_cycle_classifier(task, train_loader, val_loader, test_loader, len_train, len_val, len_test,
-                           model, optimizer, device, base_path, epochs):
+def train_cycle_classifier(task, train_loader, val_loader, test_loader,
+                           len_train, len_val, len_test, model, optimizer,
+                           device, base_path, epochs):
 
     best_acc = (0, 0)
     writer = SummaryWriter(base_path + '/plots')
 
     for epoch in range(epochs):
-        loss = train_epoch_classifier(model, train_loader, len_train, optimizer, device)
+        loss = train_epoch_classifier(model, train_loader, len_train,
+                                      optimizer, device)
         writer.add_scalar('Loss/train', loss, epoch)
-        train_acc, train_prec, train_rec, train_f1, _ = test_classifier(model, train_loader, device)
-        val_acc, val_prec, val_rec, val_f1, l = test_classifier(model, val_loader, device)
+        train_acc, train_prec, train_rec, train_f1, _ = test_classifier(
+            model, train_loader, device)
+        val_acc, val_prec, val_rec, val_f1, l = test_classifier(
+            model, val_loader, device)
 
         writer.add_scalar('Accuracy/train', train_acc, epoch)
         writer.add_scalar('Accuracy/val', val_acc, epoch)
@@ -89,19 +89,21 @@ def train_cycle_classifier(task, train_loader, val_loader, test_loader, len_trai
             torch.save(
                 model.state_dict(),
                 osp.join(base_path + '/ckpt/',
-                         model.__class__.__name__ + ".pth")
-            )
+                         model.__class__.__name__ + ".pth"))
             print("New best model saved!")
 
             with open(base_path + '/best_result.json', 'w') as outfile:
-                json.dump({'train_acc': train_acc,
-                           'val_acc': val_acc,
-                           'train_rec': train_rec,
-                           'val_rec': val_rec,
-                           'train_f1': train_f1,
-                           'val_f1': val_f1,
-                           'train_prec': train_prec,
-                           'val_prec': val_prec}, outfile)
+                json.dump(
+                    {
+                        'train_acc': train_acc,
+                        'val_acc': val_acc,
+                        'train_rec': train_rec,
+                        'val_rec': val_rec,
+                        'train_f1': train_f1,
+                        'val_f1': val_f1,
+                        'train_prec': train_prec,
+                        'val_prec': val_prec
+                    }, outfile)
 
 
 def train_epoch_regressor(model, train_loader, len_train, optimizer, device):
@@ -138,14 +140,15 @@ def test_regressor(model, loader, len_loader, device):
 
 
 def train_cycle_regressor(task, train_loader, val_loader, test_loader,
-                          len_train, len_val, len_test, model,
-                          optimizer, device, base_path, epochs):
+                          len_train, len_val, len_test, model, optimizer,
+                          device, base_path, epochs):
 
     writer = SummaryWriter(base_path + '/plots')
     best_error = (+10000, +10000)
 
     for epoch in range(epochs):
-        loss = train_epoch_regressor(model, train_loader, len_train, optimizer, device)
+        loss = train_epoch_regressor(model, train_loader, len_train, optimizer,
+                                     device)
         writer.add_scalar('Loss/train', loss, epoch)
         train_error = test_regressor(model, train_loader, len_train, device)
         val_error = test_regressor(model, val_loader, len_val, device)
@@ -163,10 +166,11 @@ def train_cycle_regressor(task, train_loader, val_loader, test_loader,
             torch.save(
                 model.state_dict(),
                 osp.join(base_path + '/ckpt/',
-                         model.__class__.__name__ + ".pth")
-            )
+                         model.__class__.__name__ + ".pth"))
             print("New best model saved!")
 
             with open(base_path + '/best_result.json', 'w') as outfile:
-                json.dump({'train_error': train_error,
-                           'val_error': val_error}, outfile)
+                json.dump({
+                    'train_error': train_error,
+                    'val_error': val_error
+                }, outfile)

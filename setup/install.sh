@@ -11,7 +11,6 @@ conda activate ${NAME}
 conda install pip -y
 conda install rdkit -c rdkit -y
 conda install tensorboard -y
-conda install -c conda-forge typer -y
 
 if [[ ${CUDA_VERSION} == 'cpu' ]]; then
   conda install pytorch==${TORCH_VERSION} torchvision torchaudio cpuonly -c pytorch -y
@@ -26,6 +25,7 @@ elif [[ ${CUDA_VERSION} == 'cu110' ]]; then
 fi
 
 python -m pip install geomloss
+python -m pip install typer
 
 # PyTorch Geometric dependencies
 python -m pip install torch-scatter -f https://pytorch-geometric.com/whl/torch-${TORCH_VERSION}+${CUDA_VERSION}.html

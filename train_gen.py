@@ -1,46 +1,38 @@
 import torch
-import utils
 import numpy as np
-import torchvision
 import json
 import os
-import utils
 import networkx as nx
 import typer
 
 from models.explainer import CF_Tox21, NCF_Tox21, Agent, CF_Esol, NCF_Esol, CF_Cycliq, NCF_Cycliq
 from torch.utils.tensorboard import SummaryWriter
-from utils import SortedQueue, morgan_bit_fingerprint, get_split, get_dgn, set_seed, \
-    mol_to_smiles, x_map_tox21, pyg_to_mol_tox21, mol_from_smiles, mol_to_tox21_pyg
+from utils import SortedQueue, morgan_bit_fingerprint, get_split, get_dgn, set_seed, mol_to_smiles, x_map_tox21, pyg_to_mol_tox21, mol_from_smiles
 from torch.nn import functional as F
 from torch_geometric.utils import to_networkx
 
-def tox21(general_params,
-          base_path,
-          writer,
-          num_counterfactuals,
-          num_non_counterfactuals,
-          original_molecule,
-          model_to_explain,
+
+def tox21(general_params, base_path, writer, num_counterfactuals,
+          num_non_counterfactuals, original_molecule, model_to_explain,
           **args):
 
-    out, (_, original_encoding) = model_to_explain(original_molecule.x,
-                                                   original_molecule.edge_index)
+    out, (_,
+          original_encoding) = model_to_explain(original_molecule.x,
+                                                original_molecule.edge_index)
 
     logits = F.softmax(out, dim=-1).detach().squeeze()
     pred_class = logits.argmax().item()
 
     assert pred_class == original_molecule.y.item()
 
-    original_molecule.smiles = mol_to_smiles(pyg_to_mol_tox21(original_molecule))
+    original_molecule.smiles = mol_to_smiles(
+        pyg_to_mol_tox21(original_molecule))
 
     print(f'Molecule: {original_molecule.smiles}')
 
     atoms_ = [
-        x_map_tox21(e).name
-        for e in np.unique(
-            [x.tolist().index(1) for x in original_molecule.x.numpy()]
-        )
+        x_map_tox21(e).name for e in np.unique(
+            [x.tolist().index(1) for x in original_molecule.x.numpy()])
     ]
 
     params = {
@@ -55,16 +47,19 @@ def tox21(general_params,
         'similarity_measure': 'combined'
     }
 
-    cf_queue = SortedQueue(num_counterfactuals, sort_predicate=lambda mol: mol['reward'])
+    cf_queue = SortedQueue(num_counterfactuals,
+                           sort_predicate=lambda mol: mol['reward'])
     cf_env = CF_Tox21(**params)
     cf_env.initialize()
 
-    ncf_queue = SortedQueue(num_non_counterfactuals, sort_predicate=lambda mol: mol['reward'])
+    ncf_queue = SortedQueue(num_non_counterfactuals,
+                            sort_predicate=lambda mol: mol['reward'])
     ncf_env = NCF_Tox21(**params)
     ncf_env.initialize()
 
     def action_encoder(action):
-        return morgan_bit_fingerprint(action, args['fp_length'], args['fp_radius']).numpy()
+        return morgan_bit_fingerprint(action, args['fp_length'],
+                                      args['fp_radius']).numpy()
 
     gen_train(writer,
               action_encoder,
@@ -103,17 +98,13 @@ def tox21(general_params,
 
     save_results(base_path, overall_queue, args)
 
-def cycliq(general_params,
-           base_path,
-           writer,
-           num_counterfactuals,
-           num_non_counterfactuals,
-           original_graph,
-           model_to_explain,
-           **args):
 
-    out, (node_embs, original_encoding) = model_to_explain(original_graph.x,
-                                              original_graph.edge_index)
+def cycliq(general_params, base_path, writer, num_counterfactuals,
+           num_non_counterfactuals, original_graph, model_to_explain, **args):
+
+    out, (node_embs,
+          original_encoding) = model_to_explain(original_graph.x,
+                                                original_graph.edge_index)
 
     logits = F.softmax(out, dim=-1).detach().squeeze()
     pred_class = logits.argmax().item()
@@ -135,11 +126,13 @@ def cycliq(general_params,
         'similarity_measure': 'neural_encoding'
     }
 
-    cf_queue = SortedQueue(num_counterfactuals, sort_predicate=lambda mol: mol['reward'])
+    cf_queue = SortedQueue(num_counterfactuals,
+                           sort_predicate=lambda mol: mol['reward'])
     cf_env = CF_Cycliq(**params)
     cf_env.initialize()
 
-    ncf_queue = SortedQueue(num_non_counterfactuals, sort_predicate=lambda mol: mol['reward'])
+    ncf_queue = SortedQueue(num_non_counterfactuals,
+                            sort_predicate=lambda mol: mol['reward'])
     params['max_steps'] = 1
     params['weight_sim'] = 0.6
     params['allow_edge_addition'] = True
@@ -149,29 +142,33 @@ def cycliq(general_params,
 
     def action_encoder(action):
         return model_to_explain(action.x, action.edge_index)[1][1].numpy()
+
     try:
-        gen_train(writer,
-                  action_encoder,
-                  model_to_explain.num_hidden * 2,
-                  cf_env,
-                  cf_queue,
-                  marker="cf",
-                  tb_name="cycliq",
-                  id_function=lambda action: hash(map(tuple, action.edge_index)),
-                  args=args)
+        gen_train(
+            writer,
+            action_encoder,
+            model_to_explain.num_hidden * 2,
+            cf_env,
+            cf_queue,
+            marker="cf",
+            tb_name="cycliq",
+            id_function=lambda action: hash(map(tuple, action.edge_index)),
+            args=args)
     except KeyboardInterrupt:
         print("Cycle interrupted.")
 
     try:
-        gen_train(writer,
-                  action_encoder,
-                  model_to_explain.num_hidden * 2,
-                  ncf_env,
-                  ncf_queue,
-                  marker="ncf",
-                  tb_name="cycliq",
-                  id_function=lambda action: hash(map(tuple, action.edge_index)),
-                  args=args)
+        args['epochs'] = 100
+        gen_train(
+            writer,
+            action_encoder,
+            model_to_explain.num_hidden * 2,
+            ncf_env,
+            ncf_queue,
+            marker="ncf",
+            tb_name="cycliq",
+            id_function=lambda action: hash(map(tuple, action.edge_index)),
+            args=args)
     except KeyboardInterrupt:
         print("Cycle interrupted.")
 
@@ -193,22 +190,19 @@ def cycliq(general_params,
 
     save_results(base_path, overall_queue, args, quantitative=True)
 
-def esol(general_params,
-         base_path,
-         writer,
-         num_counterfactuals,
-         num_non_counterfactuals,
-         original_molecule,
-         model_to_explain,
-         **args):
+
+def esol(general_params, base_path, writer, num_counterfactuals,
+         num_non_counterfactuals, original_molecule, model_to_explain, **args):
     original_molecule.x = original_molecule.x.float()
 
-    og_prediction, original_encoding = model_to_explain(original_molecule.x, original_molecule.edge_index)
+    og_prediction, original_encoding = model_to_explain(
+        original_molecule.x, original_molecule.edge_index)
     print(f'Molecule: {original_molecule.smiles}')
 
-    atoms_ = np.unique(
-        [x.GetSymbol() for x in mol_from_smiles(original_molecule.smiles).GetAtoms()]
-    )
+    atoms_ = np.unique([
+        x.GetSymbol()
+        for x in mol_from_smiles(original_molecule.smiles).GetAtoms()
+    ])
 
     params = {
         # General-purpose params
@@ -222,16 +216,19 @@ def esol(general_params,
         'similarity_measure': 'combined',
     }
 
-    cf_queue = SortedQueue(num_counterfactuals, sort_predicate=lambda mol: mol['reward'])
+    cf_queue = SortedQueue(num_counterfactuals,
+                           sort_predicate=lambda mol: mol['reward'])
     cf_env = CF_Esol(**params)
     cf_env.initialize()
 
-    ncf_queue = SortedQueue(num_non_counterfactuals, sort_predicate=lambda mol: mol['reward'])
+    ncf_queue = SortedQueue(num_non_counterfactuals,
+                            sort_predicate=lambda mol: mol['reward'])
     ncf_env = NCF_Esol(**params)
     ncf_env.initialize()
 
     def action_encoder(action):
-        return morgan_bit_fingerprint(action, args['fp_length'], args['fp_radius']).numpy()
+        return morgan_bit_fingerprint(action, args['fp_length'],
+                                      args['fp_radius']).numpy()
 
     gen_train(writer,
               action_encoder,
@@ -245,7 +242,8 @@ def esol(general_params,
     gen_train(writer,
               action_encoder,
               args['fp_length'],
-              ncf_env, ncf_queue,
+              ncf_env,
+              ncf_queue,
               marker="ncf",
               tb_name="esol",
               id_function=lambda action: action,
@@ -260,7 +258,8 @@ def esol(general_params,
         'prediction': {
             'type': 'regression',
             'output': og_prediction.squeeze().detach().numpy().tolist(),
-            'for_explanation': og_prediction.squeeze().detach().numpy().tolist()
+            'for_explanation':
+            og_prediction.squeeze().detach().numpy().tolist()
         }
     })
     overall_queue.extend(cf_queue.data_)
@@ -268,17 +267,12 @@ def esol(general_params,
 
     save_results(base_path, overall_queue, args)
 
-def gen_train(writer,
-              action_encoder,
-              n_input,
-              environment,
-              queue,
-              marker,
-              tb_name,
-              id_function,
-              args):
+
+def gen_train(writer, action_encoder, n_input, environment, queue, marker,
+              tb_name, id_function, args):
     device = torch.device("cpu")
-    agent = Agent(n_input + 1, 1, device, args['lr'], args['replay_buffer_size'])
+    agent = Agent(n_input + 1, 1, device, args['lr'],
+                  args['replay_buffer_size'])
 
     eps = 1.0
     batch_losses = []
@@ -289,12 +283,10 @@ def gen_train(writer,
         steps_left = args['max_steps_per_episode'] - environment.num_steps_taken
         valid_actions = list(environment.get_valid_actions())
 
-        observations = np.vstack(
-            [
-                np.append(action_encoder(action), steps_left)
-                for action in valid_actions
-            ]
-        )
+        observations = np.vstack([
+            np.append(action_encoder(action), steps_left)
+            for action in valid_actions
+        ])
 
         observations = torch.as_tensor(observations).float()
         a = agent.action_step(observations, eps)
@@ -302,10 +294,7 @@ def gen_train(writer,
 
         result = environment.step(action)
 
-        action_embedding = np.append(
-            action_encoder(action),
-            steps_left
-        )
+        action_embedding = np.append(action_encoder(action), steps_left)
 
         _, out, done = result
 
@@ -315,26 +304,21 @@ def gen_train(writer,
 
         steps_left = args['max_steps_per_episode'] - environment.num_steps_taken
 
-        action_embeddings = np.vstack(
-            [
-                np.append(action_encoder(action), steps_left)
-                for action in environment.get_valid_actions()
-            ]
-        )
+        action_embeddings = np.vstack([
+            np.append(action_encoder(action), steps_left)
+            for action in environment.get_valid_actions()
+        ])
 
         agent.replay_buffer.push(
             torch.as_tensor(action_embedding).float(),
             torch.as_tensor(out['reward']).float(),
             torch.as_tensor(action_embeddings).float(),
-            float(result.terminated)
-        )
+            float(result.terminated))
 
-        if it % args['update_interval'] == 0 and len(agent.replay_buffer) >= args['batch_size']:
-            loss = agent.train_step(
-                args['batch_size'],
-                args['gamma'],
-                args['polyak']
-            )
+        if it % args['update_interval'] == 0 and len(
+                agent.replay_buffer) >= args['batch_size']:
+            loss = agent.train_step(args['batch_size'], args['gamma'],
+                                    args['polyak'])
             loss = loss.item()
             batch_losses.append(loss)
 
@@ -343,13 +327,10 @@ def gen_train(writer,
         if done:
             episode += 1
 
-            print(f'({args["sample"]}) Episode {episode}> Reward = {out["reward"]:.4f} (pred: {out["reward_pred"]:.4f}, sim: {out["reward_sim"]:.4f})')
-            queue.insert({
-                'marker': marker,
-                'id': id_function(action),
-                **out
-            })
-
+            print(
+                f'({args["sample"]}) Episode {episode}> Reward = {out["reward"]:.4f} (pred: {out["reward_pred"]:.4f}, sim: {out["reward_sim"]:.4f})'
+            )
+            queue.insert({'marker': marker, 'id': id_function(action), **out})
 
             eps *= 0.9987
             # eps = max(eps, 0.05)
@@ -373,11 +354,12 @@ def save_results(base_path, queue, args, quantitative=False):
         pyg = molecule.pop('pyg')
         if quantitative:
             g = to_networkx(pyg, to_undirected=True)
-            nx.write_gexf(g, f"{gexf_dir}/{i}.{molecule['prediction']['class']}.gexf")
-
+            nx.write_gexf(
+                g, f"{gexf_dir}/{i}.{molecule['prediction']['class']}.gexf")
 
     with open(output_dir + "/data.json", "w") as outf:
         json.dump(queue, outf, indent=2)
+
 
 def main(dataset: str,
          experiment_name: str = typer.Argument("test"),
@@ -400,8 +382,7 @@ def main(dataset: str,
          allow_node_addition: bool = typer.Option(True),
          allow_edge_addition: bool = typer.Option(True),
          allow_bonds_between_rings: bool = typer.Option(True),
-         seed: int = typer.Option(0)
-):
+         seed: int = typer.Option(0)):
 
     general_params = {
         # General-purpose params

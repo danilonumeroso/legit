@@ -15,7 +15,6 @@ EPS = 1e-15
 
 
 class GNNExplainer_(GNNExplainer):
-
     def __init__(self, prediction_loss, **kwargs):
         super(GNNExplainer_, self).__init__(**kwargs)
         self.prediction_loss = prediction_loss
@@ -24,10 +23,10 @@ class GNNExplainer_(GNNExplainer):
         (N, F), E = x.size(), edge_index.size(1)
 
         std = 0.1
-        self.node_feat_mask = torch.nn.Parameter(torch.randn((1,F)) * 0.1)
+        self.node_feat_mask = torch.nn.Parameter(torch.randn((1, F)) * 0.1)
         std = torch.nn.init.calculate_gain('relu') * sqrt(2.0 / (2 * N))
 
-        self.edge_mask = torch.nn.Parameter(torch.randn(E//2) * std)
+        self.edge_mask = torch.nn.Parameter(torch.randn(E // 2) * std)
 
         for module in self.model.modules():
             if isinstance(module, MessagePassing):
@@ -62,13 +61,12 @@ class GNNExplainer_(GNNExplainer):
         self.model.eval()
         self.__clear_masks__()
 
-        batch = torch.zeros(
-                x.shape[0]
-        ).long()
+        batch = torch.zeros(x.shape[0]).long()
 
         # Get the initial prediction.
         prediction = kwargs['prediction']
-        node_feat_mask_enable = False if 'node_feats' not in kwargs else kwargs['node_feats']
+        node_feat_mask_enable = False if 'node_feats' not in kwargs else kwargs[
+            'node_feats']
 
         self.__set_masks__(x, edge_index)
         self.to(x.device)
@@ -89,7 +87,9 @@ class GNNExplainer_(GNNExplainer):
             if self.node_feat_mask is not None:
                 h = x * self.node_feat_mask.sigmoid()
 
-            explaining_prediction, _ = self.model(x=x, edge_index=edge_index, batch=batch)
+            explaining_prediction, _ = self.model(x=x,
+                                                  edge_index=edge_index,
+                                                  batch=batch)
             loss = self.__loss__(explaining_prediction, prediction)
             loss.backward()
             optimizer.step()
@@ -111,8 +111,12 @@ class GNNExplainer_(GNNExplainer):
         print("Final Pred:", explaining_prediction)
         return node_feat_mask, edge_mask.repeat(2)
 
-    def visualize_subgraph(self, edge_index, edge_mask, num_nodes,
-                           threshold=None, **kwargs):
+    def visualize_subgraph(self,
+                           edge_index,
+                           edge_mask,
+                           num_nodes,
+                           threshold=None,
+                           **kwargs):
 
         assert edge_mask.size(0) == edge_index.size(1)
 
@@ -138,18 +142,18 @@ class GNNExplainer_(GNNExplainer):
         ax.set_ylim((-SCALE - 0.1, SCALE + 0.1))
 
         for source, target, data in G.to_undirected().edges(data=True):
-            ax.annotate(
-                '',
-                xy=pos[target],
-                xycoords='data',
-                xytext=pos[source],
-                textcoords='data', arrowprops=dict(
-                    arrowstyle="-",
-                    alpha=max(data['att'], 0.1),
-                    shrinkA=sqrt(node_size) / 2.0,
-                    shrinkB=sqrt(node_size) / 2.0,
-                    connectionstyle="arc3,rad=0.00",
-                ))
+            ax.annotate('',
+                        xy=pos[target],
+                        xycoords='data',
+                        xytext=pos[source],
+                        textcoords='data',
+                        arrowprops=dict(
+                            arrowstyle="-",
+                            alpha=max(data['att'], 0.1),
+                            shrinkA=sqrt(node_size) / 2.0,
+                            shrinkB=sqrt(node_size) / 2.0,
+                            connectionstyle="arc3,rad=0.00",
+                        ))
 
         nx.draw_networkx_labels(G, pos, **kwargs)
         return ax, G

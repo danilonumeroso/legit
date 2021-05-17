@@ -5,13 +5,7 @@ from torch_geometric.nn import global_mean_pool as gap, global_max_pool as gmp
 
 
 class GCNN(torch.nn.Module):
-    def __init__(
-            self,
-            num_input,
-            num_hidden,
-            num_output,
-            dropout=0
-    ):
+    def __init__(self, num_input, num_hidden, num_output, dropout=0):
         super(GCNN, self).__init__()
 
         self.num_input = num_input
@@ -22,7 +16,7 @@ class GCNN(torch.nn.Module):
         self.conv2 = GraphConv(num_hidden, num_hidden)
         self.conv3 = GraphConv(num_hidden, num_hidden)
 
-        self.lin1 = torch.nn.Linear(num_hidden*2, 128)
+        self.lin1 = torch.nn.Linear(num_hidden * 2, 128)
         self.lin2 = torch.nn.Linear(128, 64)
         self.lin3 = torch.nn.Linear(64, num_output)
 

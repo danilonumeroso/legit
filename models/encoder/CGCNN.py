@@ -5,12 +5,7 @@ from torch_geometric.nn import global_mean_pool as gmp, global_max_pool as gmmp,
 
 
 class CGCNN(torch.nn.Module):
-    def __init__(
-            self,
-            num_input,
-            num_edge_features,
-            num_output
-    ):
+    def __init__(self, num_input, num_edge_features, num_output):
         super(EncoderV2, self).__init__()
 
         self.conv1 = CGConv(num_input, num_edge_features)

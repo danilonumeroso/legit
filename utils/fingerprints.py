@@ -5,6 +5,7 @@ from rdkit.DataStructs import ConvertToNumpyArray
 from rdkit.Chem import AllChem
 from utils.molecules import mol_from_smiles, mol_to_smiles
 
+
 class Fingerprint:
     def __init__(self, fingerprint, fp_length):
         self.fp = fingerprint
@@ -14,7 +15,7 @@ class Fingerprint:
         return self.fingerprint is None
 
     def numpy(self):
-        np_ = np.zeros((1,))
+        np_ = np.zeros((1, ))
         ConvertToNumpyArray(self.fp, np_)
         return np_
 
@@ -30,7 +31,10 @@ def morgan_bit_fingerprint(molecule, fp_len, fp_rad, bitInfo=None):
     if molecule is None:
         print(m)
 
-    fp = AllChem.GetMorganFingerprintAsBitVect(molecule, fp_rad, fp_len, bitInfo=bitInfo)
+    fp = AllChem.GetMorganFingerprintAsBitVect(molecule,
+                                               fp_rad,
+                                               fp_len,
+                                               bitInfo=bitInfo)
     return Fingerprint(fp, fp_len)
 
 
@@ -38,7 +42,10 @@ def morgan_count_fingerprint(molecule, fp_len, fp_rad, bitInfo=None):
     if isinstance(molecule, str):
         molecule = mol_from_smiles(molecule)
 
-    fp = AllChem.GetHashedMorganFingerprint(molecule, fp_rad, fp_len, bitInfo=bitInfo)
+    fp = AllChem.GetHashedMorganFingerprint(molecule,
+                                            fp_rad,
+                                            fp_len,
+                                            bitInfo=bitInfo)
     return Fingerprint(fp, fp_len)
 
 

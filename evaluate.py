@@ -42,13 +42,16 @@ def main(dataset_path: Path, explain_path: Path):
         for label, nodes in nodes_by_label.items():
             if label == '0' or label == 0:
                 continue
-            edges.extend([(int(u), int(v)) for u, v in g.subgraph(nodes).edges()])
+            edges.extend([(int(u), int(v))
+                          for u, v in g.subgraph(nodes).edges()])
         return edges
 
     def get_accuracy(correct_edges, edge_importance):
 
         # Extract as many as correct edges
-        predicted_edges = sorted(edge_importance.keys(), key=lambda e: -edge_importance[e])[:len(correct_edges)]
+        predicted_edges = sorted(
+            edge_importance.keys(),
+            key=lambda e: -edge_importance[e])[:len(correct_edges)]
         correct = 0
         for u, v in predicted_edges:
             if (u, v) in correct_edges or (v, u) in correct_edges:
@@ -68,11 +71,13 @@ def main(dataset_path: Path, explain_path: Path):
         accs.append(acc)
         accs_by_label[labels[idx]].append(acc)
     print('Total accuracy:')
-    print('Sample count:', len(accs), 'Mean accuracy:', np.mean(accs), 'standard deviation:', np.std(accs))
+    print('Sample count:', len(accs), 'Mean accuracy:', np.mean(accs),
+          'standard deviation:', np.std(accs))
     print('Accuracy by label:')
     for k, v in sorted(accs_by_label.items()):
         print('Accuracy for label', k)
-        print('Sample count:', len(v), 'Mean accuracy:', np.mean(v), 'standard deviation:', np.std(v))
+        print('Sample count:', len(v), 'Mean accuracy:', np.mean(v),
+              'standard deviation:', np.std(v))
         print('-' * 40)
 
 

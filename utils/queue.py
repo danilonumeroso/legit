@@ -1,8 +1,5 @@
 class SortedQueue:
-    def __init__(self,
-                 num_items,
-                 sort_predicate=None
-    ):
+    def __init__(self, num_items, sort_predicate=None):
         self.num_items = num_items
         self.sort_predicate = sort_predicate
         self.data_ = []
