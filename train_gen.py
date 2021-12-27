@@ -66,7 +66,7 @@ def tox21(general_params, base_path, writer, num_counterfactuals,
               args['fp_length'],
               cf_env,
               cf_queue,
-              marker="cf",
+              marker=lambda x: "cf" if x != pred_class else "ncf",
               tb_name="tox21",
               id_function=lambda action: action,
               args=args)
@@ -75,7 +75,7 @@ def tox21(general_params, base_path, writer, num_counterfactuals,
               args['fp_length'],
               ncf_env,
               ncf_queue,
-              marker="ncf",
+              marker=lambda x: "cf" if x != pred_class else "ncf",
               tb_name="tox_21",
               id_function=lambda action: action,
               args=args)
@@ -150,7 +150,7 @@ def cycliq(general_params, base_path, writer, num_counterfactuals,
             model_to_explain.num_hidden * 2,
             cf_env,
             cf_queue,
-            marker="cf",
+            marker=lambda x: "cf" if x != pred_class else "ncf",
             tb_name="cycliq",
             id_function=lambda action: hash(map(tuple, action.edge_index)),
             args=args)
@@ -165,7 +165,7 @@ def cycliq(general_params, base_path, writer, num_counterfactuals,
             model_to_explain.num_hidden * 2,
             ncf_env,
             ncf_queue,
-            marker="ncf",
+            marker=lambda x: "cf" if x != pred_class else "ncf",
             tb_name="cycliq",
             id_function=lambda action: hash(map(tuple, action.edge_index)),
             args=args)
@@ -185,8 +185,12 @@ def cycliq(general_params, base_path, writer, num_counterfactuals,
             'class': original_graph.y.item()
         }
     })
-    overall_queue.extend(cf_queue.data_)
-    overall_queue.extend(ncf_queue.data_)
+
+    # ensure that num_cf == num_non_cf (for cycliq only)
+    N = len(list(filter(lambda x: x['marker'] == 'cf',  cf_queue.data_)))
+
+    overall_queue.extend(cf_queue.data_[:N])
+    overall_queue.extend(ncf_queue.data_[:N])
 
     save_results(base_path, overall_queue, args, quantitative=True)
 
@@ -235,7 +239,7 @@ def esol(general_params, base_path, writer, num_counterfactuals,
               args['fp_length'],
               cf_env,
               cf_queue,
-              marker="cf",
+              marker=lambda _: "cf",
               tb_name="esol",
               id_function=lambda action: action,
               args=args)
@@ -244,7 +248,7 @@ def esol(general_params, base_path, writer, num_counterfactuals,
               args['fp_length'],
               ncf_env,
               ncf_queue,
-              marker="ncf",
+              marker=lambda _: "ncf",
               tb_name="esol",
               id_function=lambda action: action,
               args=args)
@@ -330,7 +334,9 @@ def gen_train(writer, action_encoder, n_input, environment, queue, marker,
             print(
                 f'({args["sample"]}) Episode {episode}> Reward = {out["reward"]:.4f} (pred: {out["reward_pred"]:.4f}, sim: {out["reward_sim"]:.4f})'
             )
-            queue.insert({'marker': marker, 'id': id_function(action), **out})
+
+            pred_class = out['prediction']['class']
+            queue.insert({'marker': marker(pred_class), 'id': id_function(action), **out})
 
             eps *= 0.9987
             # eps = max(eps, 0.05)

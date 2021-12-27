@@ -1,2 +1,5 @@
 runs
 data
+.ipynb_checkpoints
+explanations
+visualize.ipynb

@@ -1,0 +1,14 @@
+#!/bin/bash
+nw=$1
+steps=$2
+
+for i in $(seq 0 $nw 199)
+do
+  for j in $(seq 0 $nw)
+  do
+    let "idx = $i + $j"
+    echo $idx
+    python -u train_gen.py cycliq best_experiment --allow-no-modification --seed 1024 --sample $idx --max-steps-per-episode $2 --epochs 3000 &
+  done
+  wait
+done

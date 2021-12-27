@@ -1,5 +1,4 @@
 import json
-import matplotlib.pyplot as plt
 import typer
 import torch
 import os
@@ -7,18 +6,17 @@ import numpy as np
 import networkx as nx
 import random
 
+from dig.xgraph.method import PGExplainer
 from enum import Enum
 from tqdm import tqdm as tq
 from geomloss import SamplesLoss
 from torch.nn import Sequential, Linear
 from torch.nn import functional as F
-from torch_geometric.utils import accuracy, precision, recall, f1_score
+from torch_geometric.utils import accuracy, from_networkx
 from pathlib import Path
-from rdkit import Chem
 from rdkit.Chem import Draw
-from models import GNNExplainer_
-from models.encoder import GCNN
-from utils import get_split, get_dgn, mol_to_tox21_pyg, mol_to_esol_pyg, mol_from_smiles, morgan_count_fingerprint, x_map_tox21, mol_to_smiles, create_path, rdkit_fingerprint, morgan_bit_fingerprint
+from models import GNNExplainer_, DeepLIFT_
+from utils import get_dgn, mol_from_smiles, morgan_count_fingerprint, create_path, get_split
 
 app = typer.Typer(add_completion=False)
 
@@ -73,13 +71,172 @@ def random_explain(dataset_path: Path, output_path: Path):
         np.save(output_path / ('%s.npy' % gid), masked_adj)
 
 
-@app.command(name='GNNExplainer')
+@app.command(help='Run occlusion explanation')
+def occlusion(dataset_path: Path, output_path: Path, dataset_name='cycliq', experiment_name='best_experiment'):
+    create_path(output_path)
+    nx_graphs, labels = read_graphs(dataset_path)
+    model = get_dgn(dataset_name, experiment_name)
+
+    def prepare_input(g):
+        node_count = len(g.nodes)
+        edge_index = from_networkx(g).edge_index
+        x = torch.ones((node_count, 10))
+        return x, edge_index
+
+    def explain(graph_num):
+        model.eval()
+        g = nx_graphs[graph_num]
+        x, adj = prepare_input(g)
+
+        ypred, _ = model(x, adj)
+        true_label = labels[graph_num]
+        before_occlusion = ypred[0].softmax(0)
+        node_importance = {}
+
+        for removed_node in g.nodes():
+            g2 = g.copy()
+            g2.remove_node(removed_node)
+            x, adj = prepare_input(g2)
+            ypred, _ = model(x, adj)
+            after_occlusion = ypred[0].softmax(0)
+            importance = abs(after_occlusion[true_label] - before_occlusion[true_label])
+            node_importance[int(removed_node)] = importance.item()
+
+        N = nx_graphs[graph_num].number_of_nodes()
+        masked_adj = np.zeros((N, N))
+        for u, v in nx_graphs[graph_num].edges():
+            u = int(u)
+            v = int(v)
+            masked_adj[u, v] = masked_adj[v, u] = node_importance[u] + node_importance[v]
+        return masked_adj
+
+    for gid in tq(nx_graphs):
+        masked_adj = explain(gid)
+        np.save(output_path / ('%s.npy' % gid), masked_adj)
+
+
+@app.command(name='pgexplainer')
+def pg_explainer(dataset_path: Path,
+                 output_path: Path,
+                 dataset_name: str = 'cycliq',
+                 experiment_name: str = 'best_experiment',
+                 lr: float = 1e-2):
+
+    create_path(output_path)
+    nx_graphs, labels = read_graphs(dataset_path)
+    dataset = get_split(dataset_name, 'train', experiment_name)
+    model = get_dgn(dataset_name, experiment_name)
+
+    class DIG_Wrapper(torch.nn.Module):
+        def __init__(self, model):
+            super().__init__()
+            self.model = model
+
+        def forward(self, x=None, adj=None, data=None):
+
+            if data is not None:
+                x, edge_index, batch = data.x, data.edge_index, data.batch
+            else:
+                x, edge_index, batch = x, adj, None
+
+            return self.model(x, edge_index, batch)[0]
+
+        def get_emb(self, x=None, adj=None, data=None):
+
+            if data is not None:
+                x, edge_index, batch = data.x, data.edge_index, data.batch
+            else:
+                x, edge_index, batch = x, adj, None
+
+            return self.model(x, edge_index, batch)[1][0]
+
+    wrapped_model = DIG_Wrapper(model)
+    explainer = PGExplainer(wrapped_model, in_channels=64, device='cpu', lr=lr, epochs=110, explain_graph=True)
+    explainer.train_explanation_network(dataset)
+
+    def prepare_input(g):
+        node_count = len(g.nodes)
+        edge_index = from_networkx(g).edge_index
+        x = torch.ones((node_count, 10))
+        _, (node_embs, _) = model(x, edge_index)
+        return x, edge_index, node_embs
+
+    def explain(graph_num):
+        model.eval()
+        g = nx_graphs[graph_num]
+        x, adj, embs = prepare_input(g)
+
+        _, edge_mask = explainer.explain(x, adj, wrapped_model.get_emb(x, adj))
+
+        num_nodes, _ = x.shape
+
+        masked_adj = torch.zeros((num_nodes, num_nodes))
+        for i, (u, v) in enumerate(adj.numpy().T):
+            masked_adj[u, v] = edge_mask[i]
+
+        return masked_adj.detach().numpy()
+
+    for gid in tq(nx_graphs):
+        masked_adj = explain(gid)
+        np.save(output_path / ('%s.npy' % gid), masked_adj)
+
+
+@app.command(name='deeplift')
+def deeplift(dataset_path: Path,
+             output_path: Path,
+             dataset_name: str = 'cycliq',
+             experiment_name: str = 'best_experiment'):
+
+    create_path(output_path)
+    nx_graphs, labels = read_graphs(dataset_path)
+    model = get_dgn(dataset_name, experiment_name)
+
+    class DIG_Wrapper(torch.nn.Module):
+        def __init__(self, model):
+            super().__init__()
+            self.model = model
+            self.convs = torch.nn.ModuleList([model.conv1, model.conv2, model.conv3])
+
+        def forward(self, x=None, edge_index=None, batch=None, **kwargs):
+            x, edge_index = x, edge_index
+            return self.model(x, edge_index, batch)[0]
+
+    explainer = DeepLIFT_(DIG_Wrapper(model), explain_graph=True)
+
+    def prepare_input(g):
+        node_count = len(g.nodes)
+        edge_index = from_networkx(g).edge_index
+        x = torch.ones((node_count, 10))
+        return x, edge_index
+
+    def explain(graph_num):
+        model.eval()
+        g = nx_graphs[graph_num]
+        l = labels[graph_num]
+
+        x, adj = prepare_input(g)
+        edge_mask = explainer(x, adj, num_classes=2)[l]
+
+        num_nodes, _ = x.shape
+
+        masked_adj = torch.zeros((num_nodes, num_nodes))
+        for i, (u, v) in enumerate(adj.numpy().T):
+            masked_adj[u, v] = edge_mask[i]
+
+        return masked_adj.detach().numpy()
+
+    for gid in tq(nx_graphs):
+        masked_adj = explain(gid)
+        np.save(output_path / ('%s.npy' % gid), masked_adj)
+
+
+@app.command(name='gnnexplainer')
 def gnn_explainer(
-        dataset_name: str,
-        experiment_name: str,
-        epochs: int,
-        data_path: Path,
-        output_dir: Path,
+        dataset_path: Path,
+        output_path: Path,
+        dataset_name: str = 'cycliq',
+        experiment_name: str = 'best_experiment',
+        epochs: int = 800,
         node_feats: bool = typer.Option(False),
         edge_size: float = typer.Option(0.005),
         node_feat_size: float = typer.Option(1.0),
@@ -87,82 +244,50 @@ def gnn_explainer(
         node_feat_ent: float = typer.Option(0.1),
 ):
 
-    create_path(output_dir)
+    create_path(output_path)
+    nx_graphs, labels = read_graphs(dataset_path)
+    model = get_dgn(dataset_name, experiment_name)
 
-    dataset_name = dataset_name.lower()
-
-    def loss_for_classification(p1, p2):
+    def loss_fn(p1, p2):
         p1 = F.softmax(p1, dim=-1).detach().squeeze()
         return p1[1 - p2]
 
-    def loss_for_regression(p1, p2):
-        return F.l1_loss(p1.squeeze(), torch.as_tensor([p2]).squeeze())
-
-    cfs = []
-    with open(data_path, 'r') as f:
-        cfs = json.load(f)
-        cfs = list(filter(lambda mol: mol['marker'] in ['og', 'cf'], cfs))
-
-    if dataset_name in ['tox21', 'cycliq', 'cycliq-multi']:
-        loss = loss_for_classification
-        transform = mol_to_tox21_pyg if dataset_name == 'tox21' else None
-    elif dataset_name in ['esol']:
-        loss = loss_for_regression
-        transform = mol_to_esol_pyg
-
-    GCNN = get_dgn(dataset_name, experiment_name)
-    explainer = GNNExplainer_(model=GCNN, prediction_loss=loss, epochs=epochs)
+    explainer = GNNExplainer_(model=model, prediction_loss=loss_fn, epochs=epochs)
 
     explainer.coeffs['node_feat_ent'] = node_feat_ent
     explainer.coeffs['node_feat_size'] = node_feat_size
     explainer.coeffs['edge_size'] = edge_size
     explainer.coeffs['edge_ent'] = edge_ent
 
-    dataset = get_split(dataset_name, 'test', experiment_name)
+    def prepare_input(g):
+        node_count = len(g.nodes)
+        edge_index = from_networkx(g).edge_index
+        x = torch.ones((node_count, 10))
+        return x, edge_index
 
-    for i, mol in enumerate(cfs):
-        data = transform(mol['id'])
-        node_feat_mask, edge_mask = explainer.explain_undirected_graph(
-            data.x,
-            data.edge_index,
-            prediction=mol['prediction']['for_explanation'],
-            node_feats=node_feats)
+    dataset_name = dataset_name.lower()
 
-        if dataset_name == 'tox21':
-            labels = {
-                i: x_map_tox21(e).name
-                for i, e in enumerate(
-                    [x.tolist().index(1) for x in data.x.numpy()])
-            }
-        elif dataset_name == 'esol':
-            rdkit_mol = Chem.MolFromSmiles(mol['id'])
+    def explain(graph_num):
+        model.eval()
+        g = nx_graphs[graph_num]
+        x, adj = prepare_input(g)
 
-            labels = {
-                i: s
-                for i, s in enumerate(
-                    [x.GetSymbol() for x in rdkit_mol.GetAtoms()])
-            }
+        pred, _ = model(x, adj)
+        pred = pred.argmax().item()
 
-        explainer.visualize_subgraph(data.edge_index,
-                                     edge_mask,
-                                     len(data.x),
-                                     threshold=0.5,
-                                     labels=labels)
+        _, edge_mask = explainer.explain_undirected_graph(x=x, edge_index=adj, prediction=pred)
 
-        plt.axis('off')
-        plt.savefig(f"{output_dir}/{i}", bbox_inches='tight')
+        num_nodes, _ = x.shape
 
-        plt.clf()
-        if node_feats:
-            plt.imshow(node_feat_mask.numpy(),
-                       cmap='hot',
-                       interpolation='nearest')
-            plt.colorbar()
-            plt.savefig(f"{output_dir}/{i}.map.png",
-                        bbox_inches='tight',
-                        transparent=True)
+        masked_adj = torch.zeros((num_nodes, num_nodes))
+        for i, (u, v) in enumerate(adj.numpy().T):
+            masked_adj[u, v] = edge_mask[i]
 
-        plt.close()
+        return masked_adj.numpy()
+
+    for gid in tq(nx_graphs):
+        masked_adj = explain(gid)
+        np.save(output_path / ('%s.npy' % gid), masked_adj)
 
 
 class Mode(str, Enum):
@@ -186,30 +311,25 @@ def linear_model(data_path: Path,
     info = [{} for _ in data]
 
     X = torch.stack([
-        morgan_count_fingerprint(d['id'], num_input, radius,
-                                 bitInfo=info[i]).tensor()
-        for i, d in enumerate(data)
+        morgan_count_fingerprint(d['id'], num_input, radius, bitInfo=info[i]).tensor() for i, d in enumerate(data)
     ]).float()
 
     Y = torch.stack([torch.tensor(d['prediction']['output']) for d in data])
 
     print("X = ", X.numpy())
-    print("Y = ",
-          Y.numpy() if mode != 'classification' else Y.argmax(dim=-1).numpy())
+    print("Y = ", Y.numpy() if mode != 'classification' else Y.argmax(dim=-1).numpy())
 
     create_path(output_path)
 
     interpretable_model = Sequential(Linear(num_input, num_output))
 
     optimizer = torch.optim.SGD(interpretable_model.parameters(), lr=lr)
-    EPS = 1e-15
     with tq(total=epochs) as pbar:
         for epoch in range(epochs):
             optimizer.zero_grad()
 
             out = interpretable_model(X).squeeze()
-            W = torch.cat(
-                [w.flatten() for w in interpretable_model[0].parameters()])
+            W = torch.cat([w.flatten() for w in interpretable_model[0].parameters()])
             reg = lambda_ * torch.norm(W, 1)
             loss = F.mse_loss(out, Y) + reg
 
@@ -253,8 +373,7 @@ def linear_model(data_path: Path,
         d2d.drawOptions().addAtomIndices = True
         d2d.DrawMolecule(mol)
         d2d.FinishDrawing()
-        open(f"{output_path}/mol-with-indexes.svg",
-             "w").write(d2d.GetDrawingText())
+        open(f"{output_path}/mol-with-indexes.svg", "w").write(d2d.GetDrawingText())
 
 
 @app.command(name='contrast')
@@ -269,7 +388,7 @@ def contrast(dataset_path: Path,
 
     create_path(output_path)
 
-    if data_target_path == None:
+    if data_target_path is None:
         data_target_path = dataset_path
         embedding_target_path = embedding_path
 
@@ -297,7 +416,7 @@ def contrast(dataset_path: Path,
         embs = embs[:last_idx, :]
         target_embs[graph_num] = embs
 
-    def closest(graph_num, dist, size=1, neg_label=None):
+    def closest(graph_num, dist, size=10, neg_label=None):
         cur_label = labels_target[graph_num]
         pos_dists = []
         neg_dists = []
@@ -346,9 +465,7 @@ def contrast(dataset_path: Path,
         cur_embs = torch.Tensor(target_embs[graph_num])
         distance = SamplesLoss("sinkhorn", p=1, blur=.01)
 
-        positive_ids, negative_ids = closest(graph_num,
-                                             graph_distance,
-                                             size=similar_size)
+        positive_ids, negative_ids = closest(graph_num, graph_distance, size=similar_size)
 
         positive_embs = [torch.Tensor(graph_embs[i]) for i in positive_ids]
         negative_embs = [torch.Tensor(graph_embs[i]) for i in negative_ids]
@@ -360,22 +477,17 @@ def contrast(dataset_path: Path,
         if distance_str == 'ot':
 
             def mydist(mask, embs):
-                return distance(mask.softmax(0), cur_embs,
-                                distance.generate_weights(embs), embs)
+                return distance(mask.softmax(0), cur_embs, distance.generate_weights(embs), embs)
         else:
 
             def mydist(mask, embs):
-                return torch.dist(
-                    (cur_embs * mask.softmax(0).reshape(-1, 1)).sum(axis=0),
-                    embs.mean(axis=0))
+                return torch.dist((cur_embs * mask.softmax(0).reshape(-1, 1)).sum(axis=0), embs.mean(axis=0))
 
         # tq = tqdm(range(50))
         history = []
         for t in range(50):
-            loss_pos = torch.mean(
-                torch.stack([mydist(mask, x) for x in positive_embs]))
-            loss_neg = torch.mean(
-                torch.stack([mydist(mask, x) for x in negative_embs]))
+            loss_pos = torch.mean(torch.stack([mydist(mask, x) for x in positive_embs]))
+            loss_neg = torch.mean(torch.stack([mydist(mask, x) for x in negative_embs]))
             loss_self = mydist(mask, cur_embs)
 
             loss = 0
@@ -401,9 +513,9 @@ def contrast(dataset_path: Path,
         for u, v in graphs_target[graph_num].edges():
             u = int(u)
             v = int(v)
-            masked_adj[u, v] = masked_adj[
-                v, u] = node_importance[u] + node_importance[v]
+            masked_adj[u, v] = masked_adj[v, u] = node_importance[u] + node_importance[v]
         return masked_adj
+
 
     for gid in tq(target_embs):
         masked_adj = explain(gid)

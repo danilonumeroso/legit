@@ -1,0 +1,18 @@
+name: legit
+channels:
+  - pytorch
+  - conda-forge
+  - pyg
+dependencies:
+  - python=3.8
+  - pytorch=1.8.0
+  - torchvision
+  - cpuonly
+  - typer
+  - pyg
+  - rdkit
+  - pip
+  - pip:
+    - geomloss
+    - dive-into-graphs
+    - tensorboard

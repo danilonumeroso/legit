@@ -29,8 +29,8 @@ def get_valid_actions(graph, allow_removal, allow_no_modification,
 
     if allow_edge_addition:
         valid_actions.update(
-            _edge_addition(graph, max_action=sum(N) // max(1, len(N))))
-
+            _edge_addition(graph, max_action=sum(N) // max(1, len(N)))
+)
     if allow_no_modification:
         valid_actions.add(graph.clone())
 
@@ -84,10 +84,12 @@ def _edge_removal(graph):
     for i in range(num_edges // 2):
         tmp = to_networkx(graph, to_undirected=True)
         tmp.remove_edge(*edges[i])
-        tmp = from_networkx(tmp)
 
         if nx.is_tree(tmp):
             continue
+
+        tmp = from_networkx(tmp)
+
 
         a = graph.clone()
         a.edge_index = tmp.edge_index

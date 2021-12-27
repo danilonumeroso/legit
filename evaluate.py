@@ -66,7 +66,11 @@ def main(dataset_path: Path, explain_path: Path):
         correct_edges = get_correct_edges(nx_graphs[idx])
         if len(correct_edges) == 0:
             continue
-        edge_importance = explain(idx)
+        try:
+            edge_importance = explain(idx)
+        except:
+            print("error", idx)
+            continue
         acc = get_accuracy(correct_edges, edge_importance)
         accs.append(acc)
         accs_by_label[labels[idx]].append(acc)

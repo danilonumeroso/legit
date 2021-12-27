@@ -1,0 +1,24 @@
+name: graph-compression
+channels:
+  - pytorch
+  - conda-forge
+dependencies:
+  - python=3.8
+  - pytorch=1.8.0
+  #- torchvision
+  - cudatoolkit=11.1
+  #- fire
+  - matplotlib
+  - bitarray
+  - pip
+  - ogb
+  - pip:
+    - -f https://pytorch-geometric.com/whl/torch-1.9.0+cu111.html
+    - torch-scatter
+    - torch-sparse
+    - torch-cluster
+    - torch-spline-conv
+    - torch-geometric
+    - humanfriendly
+    - numgraph
+    - typer

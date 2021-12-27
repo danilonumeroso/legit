@@ -171,7 +171,7 @@ def _cycliq(name, experiment_name, batch_size):
                         },
                         name='CYCLIQ-TS')
 
-    data_list = ([dataset_tr.get(idx) for idx in range(len(dataset_tr))])
+    data_list = [dataset_tr.get(idx) for idx in range(len(dataset_tr))]
 
     for i, d in enumerate(data_list):
         d.gexf_id = f"{i+1}.{d.y.item()}.gexf"

@@ -2,6 +2,7 @@ import torch
 import numpy as np
 from models.explainer import MolDQN
 from models.explainer.ReplayMemory import ReplayMemory
+from torch.nn import functional as F
 
 
 class Agent(object):
@@ -33,13 +34,16 @@ class Agent(object):
 
     def train_step(self, batch_size, gamma, polyak):
 
+        self.optimizer.zero_grad()
         experience = self.replay_buffer.sample(batch_size)
         states_ = torch.stack([S for S, *_ in experience])
 
         next_states_ = [S for *_, S, _ in experience]
-        q, q_target = self.dqn(states_), torch.stack([
-            self.target_dqn(S).max(dim=0).values.detach() for S in next_states_
-        ])
+        q_value = self.dqn(states_).reshape((1, batch_size))
+
+        q_target = torch.stack([
+            self.target_dqn(S.to(self.device)).max(dim=0).values.detach() for S in next_states_
+        ]).reshape((1, batch_size)).to(self.device)
 
         rewards = torch.stack([R for _, R, *_ in experience]).reshape(
             (1, batch_size)).to(self.device)
@@ -47,15 +51,9 @@ class Agent(object):
             (1, batch_size)).to(self.device)
 
         q_target = rewards + gamma * (1 - dones) * q_target
-        td_target = q - q_target
 
-        loss = torch.where(
-            torch.abs(td_target) < 1.0,
-            0.5 * td_target * td_target,
-            1.0 * (torch.abs(td_target) - 0.5),
-        ).mean()
+        loss = F.smooth_l1_loss(q_target, q_value, reduction="mean")
 
-        self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
 

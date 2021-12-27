@@ -56,7 +56,6 @@ class GNNExplainer_(GNNExplainer):
         return loss
 
     def explain_undirected_graph(self, x, edge_index, **kwargs):
-        print(self.coeffs)
 
         self.model.eval()
         self.__clear_masks__()
@@ -108,7 +107,6 @@ class GNNExplainer_(GNNExplainer):
         edge_mask = self.edge_mask.detach().sigmoid()
 
         self.__clear_masks__()
-        print("Final Pred:", explaining_prediction)
         return node_feat_mask, edge_mask.repeat(2)
 
     def visualize_subgraph(self,
@@ -122,8 +120,6 @@ class GNNExplainer_(GNNExplainer):
 
         if threshold is not None:
             edge_mask = (edge_mask >= threshold).to(torch.float)
-
-        print(edge_mask)
 
         data = Data(edge_index=edge_index, att=edge_mask).to('cpu')
         data.num_nodes = num_nodes

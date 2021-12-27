@@ -3,19 +3,63 @@ import os
 import os.path as osp
 import json
 import typer
+import numpy as np
 
+from pathlib import Path
 from models.encoder import GCNN
-from utils import preprocess, train_cycle_classifier, train_cycle_regressor, set_seed
+from utils import get_split, get_dgn, preprocess, train_cycle_classifier, train_cycle_regressor, set_seed, create_path
+from torch_geometric.utils import precision, recall, f1_score, accuracy
+
+app = typer.Typer(add_completion=False)
 
 
-def main(dataset_name: str,
-         experiment_name: str = typer.Argument("test"),
-         lr: float = typer.Option(0.01),
-         hidden_size: int = typer.Option(32),
-         batch_size: int = typer.Option(32),
-         dropout: float = typer.Option(0.1),
-         epochs: int = typer.Option(50),
-         seed: int = typer.Option(0)):
+@app.command(name='embed')
+def embed(dataset_name: str, experiment_name: str):
+
+    path = Path('./runs') / dataset_name / experiment_name / 'embeddings'
+    create_path(path)
+    create_path(path / 'train')
+    create_path(path / 'test')
+
+    tr = get_split(dataset_name, 'train', experiment_name)
+    ts = get_split(dataset_name, 'test', experiment_name)
+    dgn = get_dgn(dataset_name, experiment_name)
+
+    for i, data in enumerate(tr):
+        _, (node_emb, _) = dgn(data.x, data.edge_index)
+        node_emb = node_emb.numpy()
+        np.save(open(path / 'train' / f'{i+1}.npy', 'wb'), node_emb)
+
+    for i, data in enumerate(ts):
+        _, (node_emb, _) = dgn(data.x, data.edge_index)
+        node_emb = node_emb.numpy()
+        np.save(open(path / 'test' / f'{i+1}.npy', 'wb'), node_emb)
+
+
+@app.command(name='test')
+def test(dataset_name: str, experiment_name: str):
+
+    ts = get_split(dataset_name, 'test', experiment_name)
+    dgn = get_dgn(dataset_name, experiment_name)
+
+    Ypred = torch.stack([dgn(T.x, T.edge_index)[0].argmax() for T in ts])
+    Ytrue = torch.stack([T.y for T in ts]).flatten()
+
+    print(f"A: {accuracy(Ypred, Ytrue)}")
+    print(f"P: {precision(Ypred, Ytrue, dgn.num_output).mean().item()}")
+    print(f"R: {recall(Ypred, Ytrue, dgn.num_output).mean().item()}")
+    print(f"F1: {f1_score(Ypred, Ytrue, dgn.num_output).mean().item()}")
+
+
+@app.command(name='train')
+def train(dataset_name: str,
+          experiment_name: str = typer.Argument("test"),
+          lr: float = typer.Option(0.01),
+          hidden_size: int = typer.Option(32),
+          batch_size: int = typer.Option(32),
+          dropout: float = typer.Option(0.1),
+          epochs: int = typer.Option(50),
+          seed: int = typer.Option(0)):
 
     set_seed(seed)
 
@@ -91,4 +135,4 @@ def main(dataset_name: str,
 
 
 if __name__ == '__main__':
-    typer.run(main)
+    app()
