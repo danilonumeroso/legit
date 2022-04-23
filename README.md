@@ -63,7 +63,7 @@ python explain.py contrast | linear  <...parameters>
 
 `contrast` only work for CYCLIQ, whereas `linear` requires chemistry tasks (i.e, TOX21, ESOL).
 
-To evaluate explanation accuracy for CYCLIQ, we use the evaluation script from (CoGE)[https://github.com/lukasjf/contrastive-gnn-explanation]:
+To evaluate explanation accuracy for CYCLIQ, we use the evaluation script from [CoGE](https://github.com/lukasjf/contrastive-gnn-explanation):
 
 ```
 python evaluate.py <dataset_path> <explain_path>
