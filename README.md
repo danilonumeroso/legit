@@ -1,5 +1,5 @@
 # LEGIT: Local Explainer for deep Graph networks by Input perturbaTion
-This repository contains the official implementation of LEGIT.
+This repository contains the official implementation of [LEGIT](https://ieeexplore.ieee.org/document/9761788) (TNNLS).
 
 ## Install dependencies
 ```
